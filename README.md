@@ -1,102 +1,197 @@
-![Envoy Logo](https://github.com/envoyproxy/artwork/blob/main/PNG/Envoy_Logo_Final_PANTONE.png)
+# Envoy External Processing (ext_proc) Dynamic Metadata Update
 
-[Cloud-native high-performance edge/middle/service proxy](https://www.envoyproxy.io/)
+This repository demonstrates how to use Envoy's External Processing filter to update dynamic metadata for custom HTTP filter namespaces. Specifically, it shows how to update metadata in the namespace `envoy.filters.http.mir_stateful_session_process` with key `deployment` and value `abc`.
 
-Envoy is hosted by the [Cloud Native Computing Foundation](https://cncf.io) (CNCF). If you are a
-company that wants to help shape the evolution of technologies that are container-packaged,
-dynamically-scheduled and microservices-oriented, consider joining the CNCF. For details about who's
-involved and how Envoy plays a role, read the CNCF
-[announcement](https://www.cncf.io/blog/2017/09/13/cncf-hosts-envoy/).
+## Overview
 
-[![CII Best Practices](https://bestpractices.coreinfrastructure.org/projects/1266/badge)](https://bestpractices.coreinfrastructure.org/projects/1266)
-[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/envoyproxy/envoy/badge)](https://securityscorecards.dev/viewer/?uri=github.com/envoyproxy/envoy)
-[![CLOMonitor](https://img.shields.io/endpoint?url=https://clomonitor.io/api/projects/cncf/envoy/badge)](https://clomonitor.io/projects/cncf/envoy)
-[![Azure Pipelines](https://dev.azure.com/cncf/envoy/_apis/build/status/11?branchName=main)](https://dev.azure.com/cncf/envoy/_build/latest?definitionId=11&branchName=main)
-[![Fuzzing Status](https://oss-fuzz-build-logs.storage.googleapis.com/badges/envoy.svg)](https://bugs.chromium.org/p/oss-fuzz/issues/list?sort=-opened&can=1&q=proj:envoy)
-[![Jenkins](https://powerci.osuosl.org/buildStatus/icon?job=build-envoy-static-master&subject=ppc64le%20build)](https://powerci.osuosl.org/job/build-envoy-static-master/)
-[![Jenkins](https://ibmz-ci.osuosl.org/buildStatus/icon?job=Envoy_IBMZ_CI&subject=s390x%20build)](https://ibmz-ci.osuosl.org/job/Envoy_IBMZ_CI/)
+The External Processing (ext_proc) filter allows external services to process HTTP requests and responses, including the ability to update dynamic metadata that can be consumed by other filters in the processing chain.
 
-## Documentation
+## Key Features
 
-* [Official documentation](https://www.envoyproxy.io/)
-* [FAQ](https://www.envoyproxy.io/docs/envoy/latest/faq/overview)
-* [Example documentation](https://github.com/envoyproxy/examples/)
-* [Blog](https://medium.com/@mattklein123/envoy-threading-model-a8d44b922310) about the threading model
-* [Blog](https://medium.com/@mattklein123/envoy-hot-restart-1d16b14555b5) about hot restart
-* [Blog](https://medium.com/@mattklein123/envoy-stats-b65c7f363342) about stats architecture
-* [Blog](https://medium.com/@mattklein123/the-universal-data-plane-api-d15cec7a) about universal data plane API
-* [Blog](https://medium.com/@mattklein123/lyfts-envoy-dashboards-5c91738816b1) on Lyft's Envoy dashboards
+- **Dynamic Metadata Updates**: Update metadata for custom filter namespaces
+- **Bidirectional gRPC Stream**: Real-time processing of HTTP requests/responses
+- **Header Manipulation**: Add, modify, or remove HTTP headers
+- **Custom Namespace Support**: Target specific filter namespaces like `envoy.filters.http.mir_stateful_session_process`
 
-## Related
+## Files Structure
 
-* [data-plane-api](https://github.com/envoyproxy/data-plane-api): v2 API definitions as a standalone
-  repository. This is a read-only mirror of [api](api/).
-* [envoy-perf](https://github.com/envoyproxy/envoy-perf): Performance testing framework.
-* [envoy-filter-example](https://github.com/envoyproxy/envoy-filter-example): Example of how to add new filters
-  and link to the main repository.
+```
+├── envoy-ext-proc-config.yaml    # Envoy configuration with ext_proc filter
+├── ext_proc_server.go            # Go implementation of ext_proc server
+├── python_ext_proc_server.py     # Python implementation of ext_proc server
+├── go.mod                        # Go module dependencies
+├── requirements.txt              # Python dependencies
+└── README.md                     # This file
+```
 
-## Contact
+## Configuration
 
-* [envoy-announce](https://groups.google.com/forum/#!forum/envoy-announce): Low frequency mailing
-  list where we will email announcements only.
-* [envoy-security-announce](https://groups.google.com/forum/#!forum/envoy-security-announce): Low frequency mailing
-  list where we will email security related announcements only.
-* [envoy-users](https://groups.google.com/forum/#!forum/envoy-users): General user discussion.
-* [envoy-dev](https://groups.google.com/forum/#!forum/envoy-dev): Envoy developer discussion (APIs,
-  feature design, etc.).
-* [envoy-maintainers](https://groups.google.com/forum/#!forum/envoy-maintainers): Use this list
-  to reach all core Envoy maintainers.
-* [Twitter](https://twitter.com/EnvoyProxy/): Follow along on Twitter!
-* [Slack](https://envoyproxy.slack.com/): Slack, to get invited go [here](https://communityinviter.com/apps/envoyproxy/envoy).
-  * NOTE: Response to user questions is best effort on Slack. For a "guaranteed" response please email
-    envoy-users@ per the guidance in the following linked thread.
+### Envoy Configuration
 
-Please see [this](https://groups.google.com/forum/#!topic/envoy-announce/l9zjYsnS3TY) email thread
-for information on email list usage.
+The `envoy-ext-proc-config.yaml` file contains the Envoy configuration that:
 
-## Contributing
+1. **Configures the ext_proc filter** with proper metadata options
+2. **Sets up receiving namespaces** to allow updates to the custom namespace
+3. **Defines the gRPC service** connection to the external processor
 
-Contributing to Envoy is fun and modern C++ is a lot less scary than you might think if you don't
-have prior experience. To get started:
+Key configuration sections:
 
-* [Contributing guide](CONTRIBUTING.md)
-* [Beginner issues](https://github.com/envoyproxy/envoy/issues?q=is%3Aopen+is%3Aissue+label%3Abeginner)
-* [Build/test quick start using docker](ci#building-and-running-tests-as-a-developer)
-* [Developer guide](DEVELOPER.md)
-* Consider installing the Envoy [development support toolchain](https://github.com/envoyproxy/envoy/blob/main/support/README.md), which helps automate parts of the development process, particularly those involving code review.
-* Please make sure that you let us know if you are working on an issue so we don't duplicate work!
+```yaml
+metadata_options:
+  forwarding_namespaces:
+    untyped:
+    - envoy.filters.http.mir_stateful_session_process
+  receiving_namespaces:
+    untyped:
+    - envoy.filters.http.mir_stateful_session_process
+```
 
-## Community Meeting
+### Processing Mode
 
-The Envoy team has a scheduled meeting time twice per month on Tuesday at 9am PT. The public
-Google calendar is [here](https://goo.gl/PkDijT).  The meeting will only be held
-if there are agenda items listed in the [meeting
-minutes](https://goo.gl/5Cergb).  Any member of the community should be able to
-propose agenda items by adding to the minutes.  The maintainers will either confirm
-the additions to the agenda, or will cancel the meeting within 24 hours of the scheduled
-date if there is no confirmed agenda.
+The configuration uses the following processing mode:
+- **Request headers**: SEND (allows processing and metadata updates)
+- **Response headers**: SEND (allows processing)
+- **Request/Response bodies**: NONE (not processed)
+- **Trailers**: SKIP (not processed)
 
-## Security
+## Implementation Examples
 
-### Security Audit
+### Go Implementation
 
-There has been several third party engagements focused on Envoy security:
-* In 2018 Cure53 performed a security audit, [full report](docs/security/audit_cure53_2018.pdf).
-* In 2021 Ada Logics performed an audit on our fuzzing infrastructure with recommendations for improvements, [full report](docs/security/audit_fuzzer_adalogics_2021.pdf).
+The Go server (`ext_proc_server.go`) demonstrates:
 
-### Reporting security vulnerabilities
+```go
+// Create dynamic metadata for the custom namespace
+dynamicMetadata := map[string]interface{}{
+    "envoy.filters.http.mir_stateful_session_process": map[string]interface{}{
+        "deployment": "abc",
+        "processed_by": "ext_proc",
+        "timestamp": "1234567890",
+    },
+}
+```
 
-If you've found a vulnerability or a potential vulnerability in Envoy please let us know at
-[envoy-security](mailto:envoy-security@googlegroups.com). We'll send a confirmation
-email to acknowledge your report, and we'll send an additional email when we've identified the issue
-positively or negatively.
+Key features:
+- Uses `github.com/envoyproxy/go-control-plane` for protobuf definitions
+- Implements bidirectional gRPC streaming
+- Updates metadata in the `ProcessingResponse.DynamicMetadata` field
 
-For further details please see our complete [security release process](SECURITY.md).
+### Python Implementation
 
-### ppc64le builds
+The Python server (`python_ext_proc_server.py`) demonstrates:
 
-Builds for the ppc64le architecture or using aws-lc are not covered by the envoy security policy. The ppc64le architecture is currently best-effort and not maintained by the Envoy maintainers.
+```python
+# Create the metadata for the custom filter namespace
+custom_metadata = Struct()
+custom_metadata.fields["deployment"].string_value = "abc"
+custom_metadata.fields["processed_by"].string_value = "ext_proc_python"
 
-## Releases
+# Create the overall dynamic metadata structure
+dynamic_metadata = Struct()
+dynamic_metadata.fields["envoy.filters.http.mir_stateful_session_process"].struct_value.CopyFrom(custom_metadata)
+```
 
-For further details please see our [release process](https://github.com/envoyproxy/envoy/blob/main/RELEASES.md).
+## Running the Setup
+
+### Prerequisites
+
+- Envoy proxy (v1.22.0 or later recommended)
+- Go 1.21+ (for Go implementation)
+- Python 3.8+ (for Python implementation)
+
+### Steps
+
+1. **Start the external processor server**
+
+   For Go:
+   ```bash
+   cd /path/to/project
+   go mod download
+   go run ext_proc_server.go
+   ```
+
+   For Python:
+   ```bash
+   pip install -r requirements.txt
+   python python_ext_proc_server.py
+   ```
+
+2. **Start Envoy with the configuration**
+   ```bash
+   envoy -c envoy-ext-proc-config.yaml
+   ```
+
+3. **Test the setup**
+   ```bash
+   curl -v http://localhost:10000/anything
+   ```
+
+### Expected Behavior
+
+When a request is processed:
+
+1. **Envoy sends request headers** to the ext_proc server
+2. **ext_proc server processes the request** and creates dynamic metadata:
+   ```json
+   {
+     "envoy.filters.http.mir_stateful_session_process": {
+       "deployment": "abc",
+       "processed_by": "ext_proc",
+       "timestamp": "1234567890"
+     }
+   }
+   ```
+3. **Envoy receives the response** with the dynamic metadata
+4. **Other filters** in the chain can access this metadata
+
+### Verification
+
+You can verify the metadata is being set by:
+
+1. **Checking the ext_proc server logs** for metadata creation messages
+2. **Adding debug headers** that reflect the metadata values
+3. **Using Envoy's admin interface** to inspect filter state
+4. **Configuring access logs** to include dynamic metadata
+
+## Metadata Structure
+
+The dynamic metadata structure follows this pattern:
+
+```yaml
+dynamic_metadata:
+  envoy.filters.http.mir_stateful_session_process:
+    deployment: "abc"
+    processed_by: "ext_proc"
+    timestamp: "1234567890"
+```
+
+## Important Notes
+
+1. **Namespace Configuration**: The `metadata_options.receiving_namespaces` must include your custom namespace
+2. **Processing Mode**: Request headers must be processed (SEND mode) to update metadata
+3. **Timing**: Metadata updates occur during request header processing
+4. **Persistence**: Metadata persists for the duration of the request/response cycle
+5. **Access**: Other filters can access this metadata using the stream info interface
+
+## Troubleshooting
+
+### Common Issues
+
+1. **Metadata not received**: Ensure `receiving_namespaces` includes your namespace
+2. **Connection refused**: Verify the ext_proc server is running on the correct port
+3. **Processing timeout**: Check `message_timeout` configuration in Envoy
+4. **Protobuf errors**: Ensure correct protobuf definitions and versions
+
+### Debug Tips
+
+1. **Enable debug logging** in both Envoy and the ext_proc server
+2. **Use failure_mode_allow: true** during development
+3. **Check the Envoy admin interface** at `localhost:9901/stats` for ext_proc statistics
+4. **Monitor gRPC stream health** and message counts
+
+## References
+
+- [Envoy External Processing Documentation](https://www.envoyproxy.io/docs/envoy/latest/configuration/http/http_filters/ext_proc_filter)
+- [External Processing Proto Definition](https://www.envoyproxy.io/docs/envoy/latest/api-v3/service/ext_proc/v3/external_processor.proto)
+- [Dynamic Metadata in Envoy](https://www.envoyproxy.io/docs/envoy/latest/intro/arch_overview/advanced/data_sharing_between_filters)
+- [Envoy Go Control Plane](https://github.com/envoyproxy/go-control-plane)

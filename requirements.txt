@@ -1,0 +1,8 @@
+grpcio>=1.50.0
+grpcio-tools>=1.50.0
+protobuf>=4.21.0
+googleapis-common-protos>=1.56.0
+
+# Envoy protobuf definitions
+# You may need to generate these from the Envoy protobuf files or use a package if available
+# See: https://github.com/envoyproxy/go-control-plane for proto definitions
