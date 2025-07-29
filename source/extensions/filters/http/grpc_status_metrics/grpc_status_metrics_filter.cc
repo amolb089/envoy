@@ -27,11 +27,11 @@ Config::Config(const envoy::extensions::filters::http::grpc_status_metrics::v3::
       stats_(GrpcStatusMetricsFilterStats{
           ALL_GRPC_STATUS_METRICS_FILTER_STATS(POOL_COUNTER_PREFIX(scope_, metric_name_prefix_))}) {}
 
-GrpcStatusMetricsFilter::GrpcStatusMetricsFilter(ConfigConstSharedPtr config)
+IRMetricFilter::IRMetricFilter(ConfigConstSharedPtr config)
     : config_(config), is_grpc_request_(false), dynamic_pool_(config->scope_.symbolTable()) {}
 
-Http::FilterHeadersStatus GrpcStatusMetricsFilter::decodeHeaders(Http::RequestHeaderMap& headers,
-                                                                 bool) {
+Http::FilterHeadersStatus IRMetricFilter::decodeHeaders(Http::RequestHeaderMap& headers,
+                                                       bool) {
   // Check if this is a gRPC request
   is_grpc_request_ = Grpc::Common::isGrpcRequestHeaders(headers);
   
@@ -47,17 +47,14 @@ Http::FilterHeadersStatus GrpcStatusMetricsFilter::decodeHeaders(Http::RequestHe
   return Http::FilterHeadersStatus::Continue;
 }
 
-Http::FilterHeadersStatus GrpcStatusMetricsFilter::encodeHeaders(Http::ResponseHeaderMap& headers,
-                                                                 bool end_stream) {
-  if (!is_grpc_request_) {
-    return Http::FilterHeadersStatus::Continue;
-  }
-
+Http::FilterHeadersStatus IRMetricFilter::encodeHeaders(Http::ResponseHeaderMap& headers,
+                                                       bool end_stream) {
+  // Only process if this was detected as a gRPC request AND has a gRPC response
   // Check if this is a gRPC response
   bool is_grpc_response = Grpc::Common::isGrpcResponseHeaders(headers, end_stream);
   
-  if (is_grpc_response) {
-    ENVOY_LOG(debug, "Detected gRPC response");
+  if (is_grpc_request_ && is_grpc_response) {
+    ENVOY_LOG(debug, "Detected gRPC request with gRPC response");
     
     // Extract deployment name from upstream metadata for dimension
     deployment_name_ = extractDeploymentFromUpstream();
@@ -70,12 +67,15 @@ Http::FilterHeadersStatus GrpcStatusMetricsFilter::encodeHeaders(Http::ResponseH
     
     // Try to extract gRPC status from headers
     extractAndRecordStatus(headers, http_status);
+  } else {
+    ENVOY_LOG(debug, "Not a gRPC request+response pair (request: {}, response: {})", 
+              is_grpc_request_, is_grpc_response);
   }
 
   return Http::FilterHeadersStatus::Continue;
 }
 
-Http::FilterTrailersStatus GrpcStatusMetricsFilter::encodeTrailers(Http::ResponseTrailerMap& trailers) {
+Http::FilterTrailersStatus IRMetricFilter::encodeTrailers(Http::ResponseTrailerMap& trailers) {
   if (!is_grpc_request_) {
     return Http::FilterTrailersStatus::Continue;
   }
@@ -96,7 +96,7 @@ Http::FilterTrailersStatus GrpcStatusMetricsFilter::encodeTrailers(Http::Respons
   return Http::FilterTrailersStatus::Continue;
 }
 
-void GrpcStatusMetricsFilter::extractAndRecordStatus(
+void IRMetricFilter::extractAndRecordStatus(
     const Http::ResponseHeaderOrTrailerMap& headers_or_trailers,
     absl::optional<uint64_t> http_status) {
   
@@ -124,9 +124,9 @@ void GrpcStatusMetricsFilter::extractAndRecordStatus(
   }
 }
 
-void GrpcStatusMetricsFilter::recordGrpcStatusMetric(Grpc::Status::GrpcStatus status_code,
-                                                    absl::optional<uint64_t> http_status,
-                                                    const std::string& deployment) {
+void IRMetricFilter::recordGrpcStatusMetric(Grpc::Status::GrpcStatus status_code,
+                                            absl::optional<uint64_t> http_status,
+                                            const std::string& deployment) {
   
   // Check if we should emit success metrics
   if (!config_->emit_success_metrics_ && status_code == Grpc::Status::WellKnownGrpcStatus::Ok) {
@@ -204,22 +204,22 @@ void GrpcStatusMetricsFilter::recordGrpcStatusMetric(Grpc::Status::GrpcStatus st
   }
 }
 
-Http::FilterFactoryCb GrpcStatusMetricsFilterConfigFactory::createFilterFactoryFromProtoTyped(
+Http::FilterFactoryCb IRMetricFilterConfigFactory::createFilterFactoryFromProtoTyped(
     const envoy::extensions::filters::http::grpc_status_metrics::v3::FilterConfig& proto_config,
     const std::string&, Server::Configuration::FactoryContext& context) {
 
   ConfigConstSharedPtr config = std::make_shared<const Config>(proto_config, context);
 
   return [config](Http::FilterChainFactoryCallbacks& callbacks) {
-    callbacks.addStreamFilter(std::make_shared<GrpcStatusMetricsFilter>(config));
+    callbacks.addStreamFilter(std::make_shared<IRMetricFilter>(config));
   };
 }
 
-void GrpcStatusMetricsFilter::setDecoderFilterCallbacks(Http::StreamDecoderFilterCallbacks& callbacks) {
+void IRMetricFilter::setDecoderFilterCallbacks(Http::StreamDecoderFilterCallbacks& callbacks) {
   decoder_callbacks_ = &callbacks;
 }
 
-absl::optional<std::string> GrpcStatusMetricsFilter::extractDeploymentFromUpstream() {
+absl::optional<std::string> IRMetricFilter::extractDeploymentFromUpstream() {
   if (!decoder_callbacks_ || !decoder_callbacks_->streamInfo().upstreamInfo()) {
     ENVOY_LOG(debug, "No upstream info available");
     return absl::nullopt;
@@ -240,7 +240,7 @@ absl::optional<std::string> GrpcStatusMetricsFilter::extractDeploymentFromUpstre
   return extractLbMetadataValue(upstream_host_metadata, std::string(DeploymentMetadataKey));
 }
 
-absl::optional<std::string> GrpcStatusMetricsFilter::extractLbMetadataValue(
+absl::optional<std::string> IRMetricFilter::extractLbMetadataValue(
     const Upstream::MetadataConstSharedPtr& upstream_host_metadata,
     const std::string& key_name) {
 
@@ -263,22 +263,22 @@ absl::optional<std::string> GrpcStatusMetricsFilter::extractLbMetadataValue(
 }
 
 // Dynamic stats helpers
-void GrpcStatusMetricsFilter::incCounter(Stats::Scope& scope, const Stats::StatName& stat) {
+void IRMetricFilter::incCounter(Stats::Scope& scope, const Stats::StatName& stat) {
   Stats::Utility::counterFromElements(scope, {stat}).inc();
 }
 
-void GrpcStatusMetricsFilter::incGauge(Stats::Scope& scope, const Stats::StatName& stat) {
+void IRMetricFilter::incGauge(Stats::Scope& scope, const Stats::StatName& stat) {
   Stats::Utility::gaugeFromElements(scope, {stat}, Stats::Gauge::ImportMode::Accumulate).inc();
 }
 
-void GrpcStatusMetricsFilter::setGauge(Stats::Scope& scope, const Stats::StatName& stat, uint64_t value) {
+void IRMetricFilter::setGauge(Stats::Scope& scope, const Stats::StatName& stat, uint64_t value) {
   Stats::Utility::gaugeFromElements(scope, {stat}, Stats::Gauge::ImportMode::Accumulate).set(value);
 }
 
 /**
- * Static registration for the gRPC status metrics filter. @see RegisterFactory.
+ * Static registration for the IR metrics filter. @see RegisterFactory.
  */
-REGISTER_FACTORY(GrpcStatusMetricsFilterConfigFactory, Server::Configuration::NamedHttpFilterConfigFactory);
+REGISTER_FACTORY(IRMetricFilterConfigFactory, Server::Configuration::NamedHttpFilterConfigFactory);
 
 } // namespace GrpcStatusMetrics
 } // namespace HttpFilters

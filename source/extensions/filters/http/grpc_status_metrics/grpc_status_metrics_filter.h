@@ -62,10 +62,10 @@ struct Config {
 
 using ConfigConstSharedPtr = std::shared_ptr<const Config>;
 
-class GrpcStatusMetricsFilter : public Http::PassThroughFilter,
-                                Logger::Loggable<Logger::Id::filter> {
+class IRMetricFilter : public Http::PassThroughFilter,
+                      Logger::Loggable<Logger::Id::filter> {
 public:
-  GrpcStatusMetricsFilter(ConfigConstSharedPtr config);
+  IRMetricFilter(ConfigConstSharedPtr config);
 
   // Http::StreamDecoderFilter
   Http::FilterHeadersStatus decodeHeaders(Http::RequestHeaderMap& headers, bool end_stream) override;
@@ -108,10 +108,10 @@ private:
   static constexpr absl::string_view DeploymentMetadataKey = "deployment";
 };
 
-class GrpcStatusMetricsFilterConfigFactory
+class IRMetricFilterConfigFactory
     : public Common::FactoryBase<envoy::extensions::filters::http::grpc_status_metrics::v3::FilterConfig> {
 public:
-  GrpcStatusMetricsFilterConfigFactory() : FactoryBase("envoy.filters.http.grpc_status_metrics") {}
+  IRMetricFilterConfigFactory() : FactoryBase("envoy.filters.http.grpc_status_metrics") {}
 
 private:
   Http::FilterFactoryCb createFilterFactoryFromProtoTyped(
