@@ -2,7 +2,7 @@
 
 ## Overview
 
-I've created a complete custom HTTP filter for Envoy that automatically detects gRPC requests and extracts gRPC status codes from upstream responses, exposing them as metric dimensions.
+I've created a complete custom upstream HTTP filter for Envoy that automatically detects gRPC requests and extracts gRPC status codes from upstream responses, exposing them as metric dimensions with deployment information from LB metadata.
 
 ## Files Created
 
@@ -35,7 +35,9 @@ I've created a complete custom HTTP filter for Envoy that automatically detects 
   - gRPC request detection using `Grpc::Common::isGrpcRequestHeaders()`
   - gRPC status extraction using `Grpc::Common::getGrpcStatus()`
   - HTTP status fallback using `Grpc::Utility::httpToGrpcStatus()`
-  - Individual counter metrics for each gRPC status code (0-16 + unknown)
+  - Deployment dimension extraction from upstream host LB metadata (key: "deployment")
+  - Dynamic counter metrics for each gRPC status code (0-16 + unknown) per deployment
+  - Static total requests counter
 
 ### 5. Build Configuration for Implementation
 - **File**: `source/extensions/filters/http/grpc_status_metrics/BUILD`
@@ -75,11 +77,18 @@ Grpc::Status::GrpcStatus inferred_status =
     Grpc::Utility::httpToGrpcStatus(http_status.value());
 ```
 
-### 3. Metric Recording
-Status codes are recorded as individual counters:
-- `grpc_status_0` through `grpc_status_16` for well-known codes
-- `grpc_status_unknown` for custom codes
-- `grpc_requests_total` for overall volume
+### 3. Deployment Extraction
+The filter extracts deployment information from upstream host metadata:
+```cpp
+// Extract from LB metadata with key "deployment"
+absl::optional<std::string> deployment = extractDeploymentFromUpstream();
+```
+
+### 4. Metric Recording
+Status codes are recorded as dynamic counters with deployment dimension:
+- `{prefix}.{deployment}.grpc_status_0` through `{prefix}.{deployment}.grpc_status_16` for well-known codes per deployment
+- `{prefix}.{deployment}.grpc_status_unknown` for custom codes per deployment
+- `{prefix}.grpc_requests_total` for overall volume (static metric)
 
 ## Configuration Options
 
@@ -107,9 +116,10 @@ http_filters:
 ## Generated Metrics
 
 The filter generates these counter metrics:
-- `{prefix}.grpc_requests_total` - Total gRPC requests
-- `{prefix}.grpc_status_{0-16}` - Specific status codes
-- `{prefix}.grpc_status_unknown` - Unknown/custom status codes
+- `{prefix}.grpc_requests_total` - Total gRPC requests (static)
+- `{prefix}.{deployment}.grpc_status_{0-16}` - Specific status codes per deployment
+- `{prefix}.{deployment}.grpc_status_unknown` - Unknown/custom status codes per deployment
+- `{prefix}.unknown_deployment.grpc_status_{code}` - Metrics when deployment metadata unavailable
 
 ## Integration Steps
 

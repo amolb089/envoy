@@ -6,10 +6,14 @@
 #include "envoy/server/filter_config.h"
 #include "envoy/stats/scope.h"
 #include "envoy/stats/stats_macros.h"
+#include "envoy/upstream/metadata.h"
 
 #include "source/common/common/logger.h"
+#include "source/common/stats/symbol_table.h"
 #include "source/extensions/filters/http/common/factory_base.h"
 #include "source/extensions/filters/http/common/pass_through_filter.h"
+
+#include "absl/types/optional.h"
 
 namespace Envoy {
 namespace Extensions {
@@ -70,15 +74,38 @@ public:
   Http::FilterHeadersStatus encodeHeaders(Http::ResponseHeaderMap& headers, bool end_stream) override;
   Http::FilterTrailersStatus encodeTrailers(Http::ResponseTrailerMap& trailers) override;
 
+  // Http::StreamDecoderFilterCallbacks
+  void setDecoderFilterCallbacks(Http::StreamDecoderFilterCallbacks& callbacks) override;
+
 private:
   void recordGrpcStatusMetric(Grpc::Status::GrpcStatus status_code, 
-                             absl::optional<uint64_t> http_status = absl::nullopt);
+                             absl::optional<uint64_t> http_status = absl::nullopt,
+                             const std::string& deployment = "");
   void extractAndRecordStatus(const Http::ResponseHeaderOrTrailerMap& headers_or_trailers,
                              absl::optional<uint64_t> http_status = absl::nullopt);
+  
+  // Extract deployment name from upstream host LB metadata
+  absl::optional<std::string> extractDeploymentFromUpstream();
+  
+  // LB metadata extraction helper
+  absl::optional<std::string> extractLbMetadataValue(
+      const Upstream::MetadataConstSharedPtr& upstream_host_metadata,
+      const std::string& key_name);
+
+  // Dynamic stats helpers
+  void incCounter(Stats::Scope& scope, const Stats::StatName& stat);
+  void incGauge(Stats::Scope& scope, const Stats::StatName& stat);
+  void setGauge(Stats::Scope& scope, const Stats::StatName& stat, uint64_t value);
 
   ConfigConstSharedPtr config_;
   bool is_grpc_request_;
   absl::optional<Grpc::Common::RequestNames> request_names_;
+  absl::optional<std::string> deployment_name_;
+  Stats::StatNamePool dynamic_pool_;
+  
+  // Constants for LB metadata
+  static constexpr absl::string_view LBMetadataName = "envoy.lb";
+  static constexpr absl::string_view DeploymentMetadataKey = "deployment";
 };
 
 class GrpcStatusMetricsFilterConfigFactory

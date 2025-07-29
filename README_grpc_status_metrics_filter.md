@@ -2,12 +2,13 @@
 
 ## Overview
 
-The gRPC Status Metrics filter is a custom HTTP filter for Envoy that automatically detects gRPC requests and extracts gRPC status codes from upstream responses. It exposes these status codes as metric dimensions, allowing for detailed monitoring and observability of gRPC services.
+The gRPC Status Metrics filter is a custom upstream HTTP filter for Envoy that automatically detects gRPC requests and extracts gRPC status codes from upstream responses. It exposes these status codes as metric dimensions with deployment information from LB metadata, allowing for detailed monitoring and observability of gRPC services per deployment.
 
 ## Features
 
 - **Automatic gRPC Detection**: Automatically detects gRPC requests based on content-type headers
 - **Status Code Extraction**: Extracts gRPC status codes from response headers and trailers
+- **Deployment Dimension**: Automatically extracts deployment name from upstream host LB metadata
 - **Flexible Metrics**: Configurable metric prefixes and selective success metric emission
 - **HTTP Correlation**: Optional inclusion of HTTP status codes for correlation
 - **Service/Method Granularity**: Optional service and method name dimensions (use with caution due to cardinality)
@@ -16,8 +17,9 @@ The gRPC Status Metrics filter is a custom HTTP filter for Envoy that automatica
 
 1. **Request Detection**: The filter examines incoming request headers to detect gRPC requests using `Grpc::Common::isGrpcRequestHeaders()`
 2. **Response Processing**: For detected gRPC requests, the filter processes response headers and trailers
-3. **Status Extraction**: Extracts gRPC status codes using `Grpc::Common::getGrpcStatus()`
-4. **Metric Recording**: Records status codes as individual counter metrics
+3. **Deployment Extraction**: Extracts deployment name from upstream host LB metadata with key "deployment"
+4. **Status Extraction**: Extracts gRPC status codes using `Grpc::Common::getGrpcStatus()`
+5. **Metric Recording**: Records status codes as individual counter metrics with deployment dimension
 
 ## Configuration
 
@@ -40,29 +42,31 @@ typed_config:
 
 ## Generated Metrics
 
-The filter generates the following counter metrics:
+The filter generates the following counter metrics with deployment dimension:
 
 | Metric Name | Description |
 |-------------|-------------|
-| `{prefix}.grpc_requests_total` | Total number of gRPC requests processed |
-| `{prefix}.grpc_status_0` | Requests with gRPC status OK (0) |
-| `{prefix}.grpc_status_1` | Requests with gRPC status CANCELLED (1) |
-| `{prefix}.grpc_status_2` | Requests with gRPC status UNKNOWN (2) |
-| `{prefix}.grpc_status_3` | Requests with gRPC status INVALID_ARGUMENT (3) |
-| `{prefix}.grpc_status_4` | Requests with gRPC status DEADLINE_EXCEEDED (4) |
-| `{prefix}.grpc_status_5` | Requests with gRPC status NOT_FOUND (5) |
-| `{prefix}.grpc_status_6` | Requests with gRPC status ALREADY_EXISTS (6) |
-| `{prefix}.grpc_status_7` | Requests with gRPC status PERMISSION_DENIED (7) |
-| `{prefix}.grpc_status_8` | Requests with gRPC status RESOURCE_EXHAUSTED (8) |
-| `{prefix}.grpc_status_9` | Requests with gRPC status FAILED_PRECONDITION (9) |
-| `{prefix}.grpc_status_10` | Requests with gRPC status ABORTED (10) |
-| `{prefix}.grpc_status_11` | Requests with gRPC status OUT_OF_RANGE (11) |
-| `{prefix}.grpc_status_12` | Requests with gRPC status UNIMPLEMENTED (12) |
-| `{prefix}.grpc_status_13` | Requests with gRPC status INTERNAL (13) |
-| `{prefix}.grpc_status_14` | Requests with gRPC status UNAVAILABLE (14) |
-| `{prefix}.grpc_status_15` | Requests with gRPC status DATA_LOSS (15) |
-| `{prefix}.grpc_status_16` | Requests with gRPC status UNAUTHENTICATED (16) |
-| `{prefix}.grpc_status_unknown` | Requests with unknown/custom gRPC status codes |
+| `{prefix}.grpc_requests_total` | Total number of gRPC requests processed (static metric) |
+| `{prefix}.{deployment}.grpc_status_0` | Requests with gRPC status OK (0) for specific deployment |
+| `{prefix}.{deployment}.grpc_status_1` | Requests with gRPC status CANCELLED (1) for specific deployment |
+| `{prefix}.{deployment}.grpc_status_2` | Requests with gRPC status UNKNOWN (2) for specific deployment |
+| `{prefix}.{deployment}.grpc_status_3` | Requests with gRPC status INVALID_ARGUMENT (3) for specific deployment |
+| `{prefix}.{deployment}.grpc_status_4` | Requests with gRPC status DEADLINE_EXCEEDED (4) for specific deployment |
+| `{prefix}.{deployment}.grpc_status_5` | Requests with gRPC status NOT_FOUND (5) for specific deployment |
+| `{prefix}.{deployment}.grpc_status_6` | Requests with gRPC status ALREADY_EXISTS (6) for specific deployment |
+| `{prefix}.{deployment}.grpc_status_7` | Requests with gRPC status PERMISSION_DENIED (7) for specific deployment |
+| `{prefix}.{deployment}.grpc_status_8` | Requests with gRPC status RESOURCE_EXHAUSTED (8) for specific deployment |
+| `{prefix}.{deployment}.grpc_status_9` | Requests with gRPC status FAILED_PRECONDITION (9) for specific deployment |
+| `{prefix}.{deployment}.grpc_status_10` | Requests with gRPC status ABORTED (10) for specific deployment |
+| `{prefix}.{deployment}.grpc_status_11` | Requests with gRPC status OUT_OF_RANGE (11) for specific deployment |
+| `{prefix}.{deployment}.grpc_status_12` | Requests with gRPC status UNIMPLEMENTED (12) for specific deployment |
+| `{prefix}.{deployment}.grpc_status_13` | Requests with gRPC status INTERNAL (13) for specific deployment |
+| `{prefix}.{deployment}.grpc_status_14` | Requests with gRPC status UNAVAILABLE (14) for specific deployment |
+| `{prefix}.{deployment}.grpc_status_15` | Requests with gRPC status DATA_LOSS (15) for specific deployment |
+| `{prefix}.{deployment}.grpc_status_16` | Requests with gRPC status UNAUTHENTICATED (16) for specific deployment |
+| `{prefix}.{deployment}.grpc_status_unknown` | Requests with unknown/custom gRPC status codes for specific deployment |
+
+**Note**: If deployment metadata is not available, metrics use "unknown_deployment" as the deployment dimension.
 
 ## Usage Examples
 
@@ -109,15 +113,22 @@ You can use these metrics for:
 Example Prometheus queries:
 
 ```promql
-# gRPC error rate
-sum(rate(grpc_status_grpc_status_4[5m])) by (cluster) + 
-sum(rate(grpc_status_grpc_status_5[5m])) by (cluster) + 
-sum(rate(grpc_status_grpc_status_13[5m])) by (cluster) + 
-sum(rate(grpc_status_grpc_status_14[5m])) by (cluster)
+# gRPC error rate by deployment
+sum(rate(grpc_status_deployment1_grpc_status_4[5m])) by (cluster) + 
+sum(rate(grpc_status_deployment1_grpc_status_5[5m])) by (cluster) + 
+sum(rate(grpc_status_deployment1_grpc_status_13[5m])) by (cluster) + 
+sum(rate(grpc_status_deployment1_grpc_status_14[5m])) by (cluster)
 
-# gRPC success rate
-sum(rate(grpc_status_grpc_status_0[5m])) by (cluster) / 
+# gRPC success rate per deployment
+sum(rate(grpc_status_deployment1_grpc_status_0[5m])) by (cluster) / 
+(sum(rate(grpc_status_deployment1_grpc_status_0[5m])) by (cluster) + 
+ sum(rate(grpc_status_deployment1_grpc_status_[1-9]*[5m])) by (cluster))
+
+# Overall gRPC request volume
 sum(rate(grpc_status_grpc_requests_total[5m])) by (cluster)
+
+# Error rate comparison across deployments  
+sum(rate(grpc_status_{deployment}_grpc_status_[4-16][5m])) by (deployment)
 ```
 
 ## Implementation Details

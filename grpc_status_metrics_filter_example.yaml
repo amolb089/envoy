@@ -17,6 +17,7 @@ static_resources:
           stat_prefix: ingress_http
           http_filters:
           # Add the gRPC status metrics filter to the filter chain
+          # This is an upstream filter that extracts deployment info from LB metadata
           - name: envoy.filters.http.grpc_status_metrics
             typed_config:
               "@type": type.googleapis.com/envoy.extensions.filters.http.grpc_status_metrics.v3.FilterConfig
@@ -67,6 +68,14 @@ static_resources:
               socket_address:
                 address: grpc-backend.example.com
                 port_value: 443
+          # LB metadata containing deployment information
+          # The filter will extract the "deployment" key from "envoy.lb" metadata
+          metadata:
+            filter_metadata:
+              envoy.lb:
+                deployment: "production-deployment-v1"
+                region: "us-west-2"
+                version: "1.2.3"
     transport_socket:
       name: envoy.transport_sockets.tls
       typed_config:

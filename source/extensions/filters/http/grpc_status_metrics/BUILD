@@ -24,6 +24,7 @@ envoy_cc_library(
         "//source/common/grpc:utility_lib",
         "//source/common/http:utility_lib",
         "//source/common/stats:symbol_table_lib",
+        "//source/common/stats:utility_lib",
         "//source/extensions/filters/http/common:factory_base_lib",
         "//source/extensions/filters/http/common:pass_through_filter_lib",
         "@envoy_api//envoy/extensions/filters/http/grpc_status_metrics/v3:pkg_cc_proto",
