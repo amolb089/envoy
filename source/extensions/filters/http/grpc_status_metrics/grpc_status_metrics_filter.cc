@@ -65,11 +65,8 @@ Http::FilterHeadersStatus GrpcStatusMetricsFilter::encodeHeaders(Http::ResponseH
       ENVOY_LOG(debug, "Found deployment: {}", deployment_name_.value());
     }
     
-    // Extract HTTP status code if configured
-    absl::optional<uint64_t> http_status;
-    if (config_->include_http_status_) {
-      http_status = Http::Utility::getResponseStatus(headers);
-    }
+    // Always extract HTTP status code for metrics
+    absl::optional<uint64_t> http_status = Http::Utility::getResponseStatus(headers);
     
     // Try to extract gRPC status from headers
     extractAndRecordStatus(headers, http_status);
@@ -136,9 +133,11 @@ void GrpcStatusMetricsFilter::recordGrpcStatusMetric(Grpc::Status::GrpcStatus st
     return;
   }
 
+  std::string http_status_str = http_status.has_value() ? std::to_string(http_status.value()) : "unknown";
+  
   ENVOY_LOG(debug, "Recording gRPC status metric: {} (HTTP: {}, Deployment: {})", 
             static_cast<uint64_t>(status_code),
-            http_status.has_value() ? std::to_string(http_status.value()) : "none",
+            http_status_str,
             deployment.empty() ? "unknown" : deployment);
 
   // Increment total gRPC requests counter (static metric)
@@ -154,37 +153,54 @@ void GrpcStatusMetricsFilter::recordGrpcStatusMetric(Grpc::Status::GrpcStatus st
     status_name = "grpc_status_unknown";
   }
 
-  // Create dynamic metric name with deployment dimension
-  std::string metric_name;
-  if (!deployment.empty()) {
-    metric_name = absl::StrCat(config_->metric_name_prefix_, ".", deployment, ".", status_name);
-  } else {
-    metric_name = absl::StrCat(config_->metric_name_prefix_, ".unknown_deployment.", status_name);
+  // Create base metric components
+  std::string deployment_part = deployment.empty() ? "unknown_deployment" : deployment;
+  
+  // 1. Create metric with deployment and gRPC status only
+  std::string grpc_metric_name = absl::StrCat(
+      config_->metric_name_prefix_, ".", deployment_part, ".", status_name);
+  
+  const auto& grpc_stat_name = dynamic_pool_.add(grpc_metric_name);
+  incCounter(config_->scope_, grpc_stat_name);
+  ENVOY_LOG(debug, "Recorded gRPC metric: {}", grpc_metric_name);
+
+  // 2. Create metric with deployment, HTTP status, and gRPC status
+  std::string combined_metric_name = absl::StrCat(
+      config_->metric_name_prefix_, ".", deployment_part, ".http_", http_status_str, ".", status_name);
+  
+  const auto& combined_stat_name = dynamic_pool_.add(combined_metric_name);
+  incCounter(config_->scope_, combined_stat_name);
+  ENVOY_LOG(debug, "Recorded combined HTTP+gRPC metric: {}", combined_metric_name);
+
+  // 3. If HTTP status correlation is enabled, create HTTP-only metrics
+  if (config_->include_http_status_) {
+    std::string http_metric_name = absl::StrCat(
+        config_->metric_name_prefix_, ".", deployment_part, ".http_", http_status_str);
+    
+    const auto& http_stat_name = dynamic_pool_.add(http_metric_name);
+    incCounter(config_->scope_, http_stat_name);
+    ENVOY_LOG(debug, "Recorded HTTP metric: {}", http_metric_name);
   }
 
-  // Record the metric using dynamic stats
-  const auto& stat_name = dynamic_pool_.add(metric_name);
-  incCounter(config_->scope_, stat_name);
-  
-  ENVOY_LOG(debug, "Recorded metric: {}", metric_name);
-
-  // If service/method granularity is enabled, create additional metrics
+  // 4. If service/method granularity is enabled, create additional metrics
   if (config_->include_service_method_ && request_names_.has_value()) {
-    std::string service_method_metric;
-    if (!deployment.empty()) {
-      service_method_metric = absl::StrCat(
-          config_->metric_name_prefix_, ".", deployment, ".", 
-          request_names_->service_, ".", request_names_->method_, ".", status_name);
-    } else {
-      service_method_metric = absl::StrCat(
-          config_->metric_name_prefix_, ".unknown_deployment.", 
-          request_names_->service_, ".", request_names_->method_, ".", status_name);
-    }
+    // gRPC service/method metric
+    std::string service_method_grpc_metric = absl::StrCat(
+        config_->metric_name_prefix_, ".", deployment_part, ".", 
+        request_names_->service_, ".", request_names_->method_, ".", status_name);
     
-    const auto& service_method_stat_name = dynamic_pool_.add(service_method_metric);
-    incCounter(config_->scope_, service_method_stat_name);
+    const auto& service_method_grpc_stat_name = dynamic_pool_.add(service_method_grpc_metric);
+    incCounter(config_->scope_, service_method_grpc_stat_name);
+    ENVOY_LOG(debug, "Recorded service/method gRPC metric: {}", service_method_grpc_metric);
     
-    ENVOY_LOG(debug, "Recorded service/method metric: {}", service_method_metric);
+    // Combined service/method + HTTP + gRPC metric
+    std::string service_method_combined_metric = absl::StrCat(
+        config_->metric_name_prefix_, ".", deployment_part, ".", 
+        request_names_->service_, ".", request_names_->method_, ".http_", http_status_str, ".", status_name);
+    
+    const auto& service_method_combined_stat_name = dynamic_pool_.add(service_method_combined_metric);
+    incCounter(config_->scope_, service_method_combined_stat_name);
+    ENVOY_LOG(debug, "Recorded service/method combined metric: {}", service_method_combined_metric);
   }
 }
 

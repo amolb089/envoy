@@ -27,6 +27,7 @@ Based on the provided metric publishing pattern, the filter now creates:
 
 #### Dynamic Metrics with Deployment Dimension:
 ```
+# gRPC Status Only
 {prefix}.{deployment}.grpc_status_0     # OK
 {prefix}.{deployment}.grpc_status_1     # CANCELLED  
 {prefix}.{deployment}.grpc_status_2     # UNKNOWN
@@ -45,11 +46,21 @@ Based on the provided metric publishing pattern, the filter now creates:
 {prefix}.{deployment}.grpc_status_15    # DATA_LOSS
 {prefix}.{deployment}.grpc_status_16    # UNAUTHENTICATED
 {prefix}.{deployment}.grpc_status_unknown
+
+# Combined HTTP + gRPC Status
+{prefix}.{deployment}.http_{http_code}.grpc_status_{grpc_code}
+
+# HTTP Status Only (when include_http_status: true)
+{prefix}.{deployment}.http_{http_code}
 ```
 
 #### Service/Method Granular Metrics (when enabled):
 ```
+# gRPC Status by Service/Method
 {prefix}.{deployment}.{service}.{method}.grpc_status_{code}
+
+# Combined HTTP + gRPC Status by Service/Method
+{prefix}.{deployment}.{service}.{method}.http_{http_code}.grpc_status_{grpc_code}
 ```
 
 ## Implementation Details
@@ -151,8 +162,18 @@ sum(rate(my_grpc_metrics_prod_deployment_v1_grpc_status_13[5m])) by (cluster)
 sum(rate(my_grpc_metrics_{deployment}_grpc_status_0[5m])) by (deployment) /
 sum(rate(my_grpc_metrics_grpc_requests_total[5m])) by (deployment)
 
-# Deployment error rate comparison
-sum(rate(my_grpc_metrics_{deployment}_grpc_status_[4-16][5m])) by (deployment)
+# HTTP 500 errors with gRPC INTERNAL status
+sum(rate(my_grpc_metrics_prod_v1_http_500_grpc_status_13[5m])) by (cluster)
+
+# HTTP 200 responses with gRPC errors (protocol issues)
+sum(rate(my_grpc_metrics_prod_v1_http_200_grpc_status_[1-9]*[5m])) by (cluster)
+
+# HTTP vs gRPC status correlation
+sum(rate(my_grpc_metrics_{deployment}_http_200_grpc_status_0[5m])) by (deployment) /
+sum(rate(my_grpc_metrics_{deployment}_http_200_grpc_status_*[5m])) by (deployment)
+
+# HTTP status distribution by deployment
+sum(rate(my_grpc_metrics_{deployment}_http_*[5m])) by (deployment, http_status)
 ```
 
 ## Files Created/Modified
@@ -168,7 +189,9 @@ sum(rate(my_grpc_metrics_{deployment}_grpc_status_[4-16][5m])) by (deployment)
 
 ### Operational Visibility
 - **Per-Deployment Monitoring**: Track gRPC status codes per deployment
+- **HTTP + gRPC Correlation**: Correlate HTTP and gRPC status codes for protocol-level debugging
 - **Error Rate Tracking**: Monitor error rates by deployment for quick identification
+- **Protocol Issue Detection**: Identify HTTP 200 responses with gRPC errors
 - **Capacity Planning**: Understand traffic distribution across deployments
 - **A/B Testing**: Compare error rates between different deployment versions
 

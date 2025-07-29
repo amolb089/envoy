@@ -18,8 +18,14 @@ The gRPC Status Metrics filter is a custom upstream HTTP filter for Envoy that a
 1. **Request Detection**: The filter examines incoming request headers to detect gRPC requests using `Grpc::Common::isGrpcRequestHeaders()`
 2. **Response Processing**: For detected gRPC requests, the filter processes response headers and trailers
 3. **Deployment Extraction**: Extracts deployment name from upstream host LB metadata with key "deployment"
-4. **Status Extraction**: Extracts gRPC status codes using `Grpc::Common::getGrpcStatus()`
-5. **Metric Recording**: Records status codes as individual counter metrics with deployment dimension
+4. **Status Extraction**: 
+   - Extracts HTTP status codes using `Http::Utility::getResponseStatus()`
+   - Extracts gRPC status codes using `Grpc::Common::getGrpcStatus()`
+5. **Metric Recording**: Records multiple metric types:
+   - gRPC status by deployment
+   - Combined HTTP + gRPC status by deployment
+   - HTTP status by deployment (when enabled)
+   - Service/method granular metrics (when enabled)
 
 ## Configuration
 
@@ -42,11 +48,18 @@ typed_config:
 
 ## Generated Metrics
 
-The filter generates the following counter metrics with deployment dimension:
+The filter generates the following counter metrics with deployment and HTTP status dimensions:
+
+### Base Metrics
 
 | Metric Name | Description |
 |-------------|-------------|
 | `{prefix}.grpc_requests_total` | Total number of gRPC requests processed (static metric) |
+
+### gRPC Status Metrics (by deployment)
+
+| Metric Name | Description |
+|-------------|-------------|
 | `{prefix}.{deployment}.grpc_status_0` | Requests with gRPC status OK (0) for specific deployment |
 | `{prefix}.{deployment}.grpc_status_1` | Requests with gRPC status CANCELLED (1) for specific deployment |
 | `{prefix}.{deployment}.grpc_status_2` | Requests with gRPC status UNKNOWN (2) for specific deployment |
@@ -65,6 +78,31 @@ The filter generates the following counter metrics with deployment dimension:
 | `{prefix}.{deployment}.grpc_status_15` | Requests with gRPC status DATA_LOSS (15) for specific deployment |
 | `{prefix}.{deployment}.grpc_status_16` | Requests with gRPC status UNAUTHENTICATED (16) for specific deployment |
 | `{prefix}.{deployment}.grpc_status_unknown` | Requests with unknown/custom gRPC status codes for specific deployment |
+
+### Combined HTTP + gRPC Status Metrics
+
+| Metric Name | Description |
+|-------------|-------------|
+| `{prefix}.{deployment}.http_{http_code}.grpc_status_{grpc_code}` | Combined HTTP and gRPC status for correlation analysis |
+
+### HTTP Status Metrics (when `include_http_status: true`)
+
+| Metric Name | Description |
+|-------------|-------------|
+| `{prefix}.{deployment}.http_{http_code}` | HTTP status codes by deployment |
+
+### Service/Method Granular Metrics (when `include_service_method: true`)
+
+| Metric Name | Description |
+|-------------|-------------|
+| `{prefix}.{deployment}.{service}.{method}.grpc_status_{grpc_code}` | gRPC status by service/method |
+| `{prefix}.{deployment}.{service}.{method}.http_{http_code}.grpc_status_{grpc_code}` | Combined status by service/method |
+
+**Examples:**
+- `my_grpc_metrics.prod_v1.grpc_status_0` - gRPC OK for prod_v1 deployment
+- `my_grpc_metrics.prod_v1.http_200.grpc_status_0` - HTTP 200 + gRPC OK for prod_v1
+- `my_grpc_metrics.prod_v1.http_500.grpc_status_13` - HTTP 500 + gRPC INTERNAL for prod_v1
+- `my_grpc_metrics.prod_v1.UserService.GetUser.grpc_status_5` - gRPC NOT_FOUND for specific service/method
 
 **Note**: If deployment metadata is not available, metrics use "unknown_deployment" as the deployment dimension.
 
@@ -121,14 +159,26 @@ sum(rate(grpc_status_deployment1_grpc_status_14[5m])) by (cluster)
 
 # gRPC success rate per deployment
 sum(rate(grpc_status_deployment1_grpc_status_0[5m])) by (cluster) / 
-(sum(rate(grpc_status_deployment1_grpc_status_0[5m])) by (cluster) + 
- sum(rate(grpc_status_deployment1_grpc_status_[1-9]*[5m])) by (cluster))
+sum(rate(grpc_status_grpc_requests_total[5m])) by (cluster)
+
+# HTTP 500 errors with gRPC INTERNAL status
+sum(rate(grpc_status_deployment1_http_500_grpc_status_13[5m])) by (cluster)
+
+# HTTP 200 responses with gRPC errors (protocol issues)
+sum(rate(grpc_status_deployment1_http_200_grpc_status_[1-9]*[5m])) by (cluster)
+
+# HTTP vs gRPC status correlation
+sum(rate(grpc_status_{deployment}_http_200_grpc_status_0[5m])) by (deployment) /
+sum(rate(grpc_status_{deployment}_http_200_grpc_status_*[5m])) by (deployment)
 
 # Overall gRPC request volume
 sum(rate(grpc_status_grpc_requests_total[5m])) by (cluster)
 
 # Error rate comparison across deployments  
 sum(rate(grpc_status_{deployment}_grpc_status_[4-16][5m])) by (deployment)
+
+# HTTP status distribution by deployment
+sum(rate(grpc_status_{deployment}_http_*[5m])) by (deployment, http_status)
 ```
 
 ## Implementation Details

@@ -12,7 +12,8 @@ option go_package = "github.com/envoyproxy/go-control-plane/envoy/extensions/fil
 option (udpa.annotations.file_status).package_version_status = ACTIVE;
 
 // [#protodoc-title: gRPC Status Metrics Filter]
-// This filter extracts gRPC status codes from responses and exposes them as metric dimensions.
+// This filter extracts both HTTP and gRPC status codes from responses and exposes them as metric dimensions,
+// with deployment information from upstream host LB metadata.
 // [#extension: envoy.filters.http.grpc_status_metrics]
 
 // gRPC status metrics filter configuration
