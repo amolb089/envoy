@@ -1,0 +1,38 @@
+syntax = "proto3";
+
+package envoy.extensions.filters.http.grpc_status_metrics.v3;
+
+import "udpa/annotations/status.proto";
+import "validate/validate.proto";
+
+option java_package = "io.envoyproxy.envoy.extensions.filters.http.grpc_status_metrics.v3";
+option java_outer_classname = "ConfigProto";
+option java_multiple_files = true;
+option go_package = "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/grpc_status_metrics/v3;grpc_status_metricsv3";
+option (udpa.annotations.file_status).package_version_status = ACTIVE;
+
+// [#protodoc-title: gRPC Status Metrics Filter]
+// This filter extracts gRPC status codes from responses and exposes them as metric dimensions.
+// [#extension: envoy.filters.http.grpc_status_metrics]
+
+// gRPC status metrics filter configuration
+message FilterConfig {
+  // Metric name prefix for the gRPC status metrics.
+  // Default is "grpc_status" if not specified.
+  string metric_name_prefix = 1 [(validate.rules).string = {min_bytes: 1}];
+
+  // Whether to emit metrics for all gRPC status codes including success (0).
+  // If false, only error status codes (non-zero) will be tracked.
+  // Default is true.
+  bool emit_success_metrics = 2;
+
+  // Whether to include the HTTP status code as an additional metric dimension.
+  // This can be useful for correlating gRPC status with HTTP status.
+  // Default is false.
+  bool include_http_status = 3;
+
+  // Whether to include the gRPC service and method names as metric dimensions.
+  // This provides more granular metrics but can increase cardinality.
+  // Default is false to prevent cardinality explosion.
+  bool include_service_method = 4;
+}

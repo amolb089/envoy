@@ -1,0 +1,81 @@
+# Example Envoy configuration with gRPC Status Metrics Filter
+# This filter extracts gRPC status codes from upstream responses and exposes them as metric dimensions
+
+static_resources:
+  listeners:
+  - name: listener_0
+    address:
+      socket_address:
+        protocol: TCP
+        address: 0.0.0.0
+        port_value: 10000
+    filter_chains:
+    - filters:
+      - name: envoy.filters.network.http_connection_manager
+        typed_config:
+          "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+          stat_prefix: ingress_http
+          http_filters:
+          # Add the gRPC status metrics filter to the filter chain
+          - name: envoy.filters.http.grpc_status_metrics
+            typed_config:
+              "@type": type.googleapis.com/envoy.extensions.filters.http.grpc_status_metrics.v3.FilterConfig
+              # Custom prefix for the metrics (optional, defaults to "grpc_status")
+              metric_name_prefix: "my_grpc_metrics"
+              
+              # Whether to emit metrics for successful (status=0) requests
+              # Set to false to only track errors
+              emit_success_metrics: true
+              
+              # Whether to include HTTP status code as an additional dimension
+              # Useful for correlating gRPC status with HTTP status
+              include_http_status: false
+              
+              # Whether to include service and method names as dimensions
+              # WARNING: This can significantly increase metric cardinality
+              include_service_method: false
+          
+          # Router filter must be last
+          - name: envoy.filters.http.router
+            typed_config:
+              "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+          
+          route_config:
+            name: local_route
+            virtual_hosts:
+            - name: local_service
+              domains: ["*"]
+              routes:
+              - match:
+                  prefix: "/"
+                route:
+                  cluster: grpc_service
+  
+  clusters:
+  - name: grpc_service
+    connect_timeout: 30s
+    type: LOGICAL_DNS
+    # http2_protocol_options are required for gRPC
+    http2_protocol_options: {}
+    lb_policy: ROUND_ROBIN
+    load_assignment:
+      cluster_name: grpc_service
+      endpoints:
+      - lb_endpoints:
+        - endpoint:
+            address:
+              socket_address:
+                address: grpc-backend.example.com
+                port_value: 443
+    transport_socket:
+      name: envoy.transport_sockets.tls
+      typed_config:
+        "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext
+        sni: grpc-backend.example.com
+
+admin:
+  address:
+    socket_address:
+      protocol: TCP
+      address: 127.0.0.1
+      port_value: 9901
